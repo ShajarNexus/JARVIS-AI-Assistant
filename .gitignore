@@ -1,0 +1,28 @@
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+
+# AI models
+models/tts/
+models/speech/
+*.onnx
+*.bin
+
+# Audio files
+*.wav
+*.mp3
+
+# Database and personal data
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment and secrets
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
