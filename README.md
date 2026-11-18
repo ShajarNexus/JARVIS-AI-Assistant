@@ -1,9 +1,10 @@
-﻿# JARVIS-AI-Assistant
+# JARVIS-AI-Assistant
+
 # J.A.R.V.I.S – Local AI Desktop Assistant
 
-A personal AI-powered desktop assistant built with Python, Ollama, and local AI models. JARVIS combines conversational AI, persistent memory, voice responses, and Windows PC automation in a modern desktop interface.
+A personal AI-powered desktop assistant built with Python, Ollama, and local AI models. JARVIS combines conversational AI, persistent memory, voice interaction, and Windows PC automation in a modern desktop interface.
 
-The goal is to create a smart desktop companion that understands natural language, remembers previous conversations, responds with a natural voice, and helps control your computer — while keeping AI processing local.
+The goal is to create a smart desktop companion that understands natural language, remembers previous conversations, responds with a natural female voice, and helps control your computer — while keeping AI processing local.
 
 ## ✨ Features Implemented
 
@@ -15,11 +16,12 @@ The goal is to create a smart desktop companion that understands natural languag
 
 ### 2. Modern Desktop Interface
 - Built using **Python and CustomTkinter**.
-- Dark-themed JARVIS dashboard.
+- Modern dark-themed JARVIS dashboard.
 - Animated JARVIS orb with system status.
 - Chat interface with separate user and assistant messages.
 - Sidebar for managing previous conversations.
 - Text input and send functionality.
+- Stop Speaking control to stop voice responses.
 
 ### 3. Conversation History
 - Uses **SQLite** for persistent conversation storage.
@@ -41,11 +43,20 @@ The goal is to create a smart desktop companion that understands natural languag
 - Generates speech locally.
 - Uses a background worker and queue for speech generation.
 - Plays generated audio through `sounddevice`.
+- Supports stopping ongoing speech.
 
-### 6. Windows PC Automation
-JARVIS can understand natural-language requests and generate structured action plans using local Qwen.
+### 6. Voice Recognition and Interaction
+- Integrated **Faster-Whisper** for offline English speech recognition.
+- Uses the `small.en` speech recognition model.
+- Captures microphone input and converts speech into text.
+- Supports continuous microphone listening in the main application.
+- Detects speech and silence to process voice commands.
+- Supports voice-based Yes/No confirmation for PC automation.
 
-Currently supported actions:
+### 7. Windows PC Automation
+JARVIS understands natural-language requests and generates structured action plans using the local Qwen model.
+
+Currently supported actions include:
 
 - Open Google Chrome.
 - Open Notepad.
@@ -53,21 +64,18 @@ Currently supported actions:
 - Open File Explorer.
 - Open Visual Studio Code.
 - Open drives and folders.
-- Search YouTube.
+- Open YouTube.
+- Search YouTube for requested content.
 - Tell the current time.
 - Schedule Windows shutdown.
 - Schedule Windows restart.
 - Cancel a scheduled shutdown or restart.
 
-**Safety:** JARVIS asks the user for confirmation before executing automation actions. Shutdown and restart operations are scheduled with a 60-second delay.
-
-### 7. Offline English Speech Recognition – Tested Separately
-- Integrated and tested **Faster-Whisper**.
-- Uses the `small.en` English speech recognition model.
-- Supports local speech-to-text processing after downloading the model.
-- Successfully tested microphone recording and English speech transcription.
-
-Continuous microphone integration into the main desktop application is still under development.
+**Safety and Confirmation:**
+- JARVIS asks for confirmation before executing automation actions.
+- Users can confirm or cancel actions using spoken responses such as "Yes" and "No".
+- Unclear responses or confirmation timeouts cancel the pending action.
+- Shutdown and restart operations are scheduled with a 60-second delay.
 
 ---
 
@@ -100,6 +108,7 @@ JARVIS/
 │   ├── ai_engine.py
 │   ├── automation.py
 │   ├── voice_engine.py
+│   ├── speech_engine.py
 │   ├── memory.py
 │   └── memory_window.py
 │
@@ -132,7 +141,7 @@ JARVIS/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/JARVIS-AI-Assistant.git
+git clone https://github.com/ShajarNexus/JARVIS-AI-Assistant.git
 cd JARVIS-AI-Assistant
 ```
 
@@ -164,13 +173,18 @@ ollama pull qwen2.5:3b
 
 ### 5. Download required voice models
 
-The Kokoro ONNX model and voice files must be downloaded separately and placed in:
+The Kokoro ONNX model and voice files must be downloaded separately and placed inside:
 
 ```text
 models/tts/
 ```
 
-The Faster-Whisper English model downloads automatically on its first run when speech recognition is initialized.
+Required files:
+
+- `kokoro-v1.0.onnx`
+- `voices-v1.0.bin`
+
+The Faster-Whisper English model is downloaded automatically on its first run when speech recognition is initialized.
 
 ### 6. Run JARVIS
 
@@ -190,21 +204,20 @@ JARVIS is designed around local AI processing.
 - Conversation history and personal memories are stored in SQLite on the user's computer.
 - No paid AI API subscription is required.
 
-Internet access is required for initial model downloads and features such as YouTube searches.
+Internet access is required for initial model downloads and online features such as YouTube searches.
 
 ## 🚀 Future Development Roadmap
 
 The project is actively being developed. Planned improvements include:
 
-- [ ] Continuous voice interaction.
-- [ ] Natural spoken confirmations such as "Yes, go ahead".
-- [ ] Voice-controlled PC automation.
-- [ ] Context-aware spoken conversations.
-- [ ] Improved microphone activation and speech detection.
 - [ ] Wake-word detection (Hey JARVIS).
 - [ ] English and Urdu language support.
 - [ ] More Windows application and system controls.
-- [ ] Improved personal memory and contextual understanding.
+- [ ] Advanced file and folder management.
+- [ ] Improved contextual understanding and conversations.
+- [ ] Enhanced microphone activation and speech detection.
+- [ ] More advanced automation capabilities.
+- [ ] Improved user interface and animations.
 
 ## 🎯 Project Goal
 
