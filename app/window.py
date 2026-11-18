@@ -1,13 +1,13 @@
 
 import customtkinter as ctk
 import threading
-
 from tkinter import messagebox
 
 from app import theme
 from app.orb import JarvisOrb
 from app.ai_engine import ask_jarvis
 from app.voice_engine import jarvis_voice
+from app.speech_engine import jarvis_speech
 from app.automation import JarvisAutomation
 
 from app.memory import (
@@ -26,7 +26,6 @@ from app.memory_window import MemoryManagerWindow
 class JarvisWindow(ctk.CTk):
 
     def __init__(self):
-
         super().__init__()
 
         self.title("JARVIS | AI Desktop Assistant")
@@ -35,26 +34,28 @@ class JarvisWindow(ctk.CTk):
 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
-
         self.configure(fg_color=theme.BG)
 
         self.listening = False
         self.is_generating = False
+        self.is_closing = False
+
+        self.awaiting_voice_confirmation = False
+        self.pending_automation = None
 
         self.conversation_number = 1
         self.current_conversation_id = None
 
-        # PC automation engine
         self.automation = JarvisAutomation()
+
+        jarvis_speech.on_text = self.on_speech_recognized
+        jarvis_voice.on_speech_finished = self.on_voice_finished
 
         self.create_sidebar()
         self.create_main_area()
-
         self.load_latest_conversation()
 
-    # ==========================================
-    # SIDEBAR
-    # ==========================================
+        self.protocol("WM_DELETE_WINDOW", self.close_application)
 
     def create_sidebar(self):
 
@@ -104,7 +105,6 @@ class JarvisWindow(ctk.CTk):
             self.sidebar,
             fg_color="transparent"
         )
-
         self.history.pack(fill="both", expand=True, padx=5)
 
         ctk.CTkFrame(
@@ -123,10 +123,6 @@ class JarvisWindow(ctk.CTk):
             text_color=theme.TEXT,
             command=self.open_memory_manager
         ).pack(fill="x", padx=15, pady=(0, 15))
-
-    # ==========================================
-    # MAIN DASHBOARD
-    # ==========================================
 
     def create_main_area(self):
 
@@ -148,10 +144,6 @@ class JarvisWindow(ctk.CTk):
         self.create_orb_section()
         self.create_chat_section()
         self.create_input_section()
-
-    # ==========================================
-    # HEADER
-    # ==========================================
 
     def create_header(self):
 
@@ -177,10 +169,6 @@ class JarvisWindow(ctk.CTk):
         )
 
         self.system_status.pack(side="right")
-
-    # ==========================================
-    # JARVIS ORB
-    # ==========================================
 
     def create_orb_section(self):
 
@@ -211,10 +199,6 @@ class JarvisWindow(ctk.CTk):
 
         self.orb_status.pack(pady=(0, 15))
 
-    # ==========================================
-    # CHAT SECTION
-    # ==========================================
-
     def create_chat_section(self):
 
         ctk.CTkLabel(
@@ -231,10 +215,6 @@ class JarvisWindow(ctk.CTk):
         )
 
         self.chat.pack(fill="both", expand=True, pady=(0, 10))
-
-    # ==========================================
-    # MESSAGE INPUT
-    # ==========================================
 
     def create_input_section(self):
 
@@ -294,9 +274,19 @@ class JarvisWindow(ctk.CTk):
 
         self.mic_button.pack(side="left", padx=(4, 0))
 
-    # ==========================================
-    # DISPLAY MESSAGES
-    # ==========================================
+        self.stop_button = ctk.CTkButton(
+            input_frame,
+            text="■ Stop Speaking",
+            width=135,
+            height=48,
+            corner_radius=12,
+            fg_color="#8C293B",
+            hover_color="#641D2C",
+            command=self.stop_speaking,
+            state="disabled"
+        )
+
+        self.stop_button.pack(side="left", padx=(8, 0))
 
     def add_message(self, sender, message):
 
@@ -331,10 +321,6 @@ class JarvisWindow(ctk.CTk):
         ).pack(anchor="w", padx=12, pady=(2, 10))
 
         self.chat._parent_canvas.yview_moveto(1.0)
-
-    # ==========================================
-    # REFRESH CONVERSATION LIST
-    # ==========================================
 
     def refresh_history(self):
 
@@ -398,10 +384,6 @@ class JarvisWindow(ctk.CTk):
                     self.delete_chat(cid)
             ).pack(side="right")
 
-    # ==========================================
-    # DELETE CONVERSATION
-    # ==========================================
-
     def delete_chat(self, conversation_id):
 
         if self.is_generating:
@@ -435,10 +417,6 @@ class JarvisWindow(ctk.CTk):
 
             self.refresh_history()
 
-    # ==========================================
-    # LOAD LATEST CONVERSATION
-    # ==========================================
-
     def load_latest_conversation(self):
 
         conversations = get_all_conversations()
@@ -451,10 +429,6 @@ class JarvisWindow(ctk.CTk):
         else:
 
             self.new_conversation()
-
-    # ==========================================
-    # LOAD SELECTED CONVERSATION
-    # ==========================================
 
     def load_conversation(self, conversation_id):
 
@@ -492,13 +466,46 @@ class JarvisWindow(ctk.CTk):
 
         self.refresh_history()
 
-    # ==========================================
-    # SEND MESSAGE
-    # ==========================================
-
     def send_message(self):
 
         message = self.entry.get().strip()
+
+        if not message:
+            return
+
+        self.entry.delete(0, "end")
+        self.submit_message(message)
+
+    def on_speech_recognized(self, message):
+
+        if self.is_closing:
+            return
+
+        try:
+
+            self.after(
+                0,
+                lambda: self.handle_recognized_speech(message)
+            )
+
+        except Exception:
+            pass
+
+    def handle_recognized_speech(self, message):
+
+        if self.is_closing:
+            return
+
+        if not self.listening:
+            return
+
+        if self.is_generating:
+            return
+
+        jarvis_speech.stop()
+        self.submit_message(message)
+
+    def submit_message(self, message):
 
         if not message or self.is_generating:
             return
@@ -506,11 +513,12 @@ class JarvisWindow(ctk.CTk):
         if self.current_conversation_id is None:
             return
 
+        if jarvis_speech.is_listening:
+            jarvis_speech.stop()
+
         conversation_id = self.current_conversation_id
 
         self.add_message("YOU", message)
-        self.entry.delete(0, "end")
-
         detect_personal_memory(message)
 
         previous_messages = get_conversation_history(
@@ -535,7 +543,6 @@ class JarvisWindow(ctk.CTk):
         )
 
         self.entry.configure(state="disabled")
-
         self.orb.set_state("thinking")
 
         self.orb_status.configure(
@@ -549,22 +556,15 @@ class JarvisWindow(ctk.CTk):
             daemon=True
         ).start()
 
-    # ==========================================
-    # UNDERSTAND USER REQUEST
-    # ==========================================
-
     def process_user_request(self, message, conversation_id):
 
         try:
 
-            # First check whether the user wants PC automation.
             plan = self.automation.understand_request(message)
-
             actions = plan.get("actions", [])
 
             if actions:
 
-                # Ask for confirmation on the main GUI thread.
                 self.after(
                     0,
                     lambda: self.confirm_automation(
@@ -576,7 +576,6 @@ class JarvisWindow(ctk.CTk):
 
                 return
 
-            # If no PC action was identified, use normal JARVIS AI.
             answer = ask_jarvis(
                 message,
                 conversation_id
@@ -599,7 +598,7 @@ class JarvisWindow(ctk.CTk):
         )
 
     # ==========================================
-    # ASK USER FOR AUTOMATION CONFIRMATION
+    # VOICE-BASED AUTOMATION CONFIRMATION
     # ==========================================
 
     def confirm_automation(
@@ -611,53 +610,145 @@ class JarvisWindow(ctk.CTk):
 
         actions = plan.get("actions", [])
 
-        action_list = "\n".join(
-            f"{number}. {self.automation.describe_action(action)}"
-            for number, action in enumerate(actions, start=1)
-        )
-
-        confirmation_text = (
-            "JARVIS wants to perform the following actions:\n\n"
-            f"{action_list}\n\n"
-            "Do you want to allow these actions?"
-        )
-
-        approved = messagebox.askyesno(
-            "JARVIS - Action Confirmation",
-            confirmation_text,
-            parent=self
-        )
-
-        if not approved:
-
-            answer = (
-                "Okay! I will not perform those actions. "
-                "Your PC has not been changed."
-            )
+        if not actions:
 
             self.display_ai_response(
                 user_message,
-                answer,
+                "I could not identify an action to perform.",
                 conversation_id
             )
 
             return
 
-        # Execute approved actions in a background thread.
+        action_list = "; ".join(
+            self.automation.describe_action(action)
+            for action in actions
+        )
+
+        question = (
+            f"I am ready to {action_list}. "
+            "Do you want me to proceed? Please say yes or no."
+        )
+
+        self.pending_automation = (
+            user_message,
+            plan,
+            conversation_id
+        )
+
+        self.awaiting_voice_confirmation = True
+
+        self.orb.set_state("thinking")
+
         self.orb_status.configure(
-            text="EXECUTING APPROVED ACTIONS...",
+            text="WAITING FOR YOUR VOICE CONFIRMATION...",
             text_color=theme.ACCENT
         )
 
-        threading.Thread(
-            target=self.execute_automation,
-            args=(user_message, plan, conversation_id),
-            daemon=True
-        ).start()
+        self.add_message("JARVIS", question)
 
-    # ==========================================
-    # EXECUTE APPROVED AUTOMATION
-    # ==========================================
+        try:
+
+            jarvis_voice.speak(question)
+            self.stop_button.configure(state="normal")
+
+        except Exception as error:
+
+            print("Could not speak confirmation question:", error)
+
+            self.awaiting_voice_confirmation = False
+            self.pending_automation = None
+
+            self.display_ai_response(
+                user_message,
+                "I could not ask for voice confirmation. "
+                "The action was cancelled for safety.",
+                conversation_id
+            )
+
+    def on_voice_confirmation_result(self, recognized_text):
+
+        if self.is_closing:
+            return
+
+        try:
+
+            self.after(
+                0,
+                lambda: self.finish_voice_confirmation(recognized_text)
+            )
+
+        except Exception:
+            pass
+
+    def finish_voice_confirmation(self, recognized_text):
+
+        if self.is_closing or not self.awaiting_voice_confirmation:
+            return
+
+        normalized = (recognized_text or "").strip().lower()
+        normalized = normalized.strip(" .,!?:;\"'")
+
+        affirmative_answers = {
+            "yes", "yeah", "yep", "ok", "okay", "sure",
+            "confirm", "confirmed", "proceed", "do it"
+        }
+
+        negative_answers = {
+            "no", "nope", "cancel", "stop", "don't", "dont"
+        }
+
+        pending = self.pending_automation
+
+        self.pending_automation = None
+        self.awaiting_voice_confirmation = False
+
+        if pending is None:
+            return
+
+        user_message, plan, conversation_id = pending
+
+        if normalized in affirmative_answers:
+
+            self.orb_status.configure(
+                text="VOICE CONFIRMATION ACCEPTED...",
+                text_color=theme.SUCCESS
+            )
+
+            threading.Thread(
+                target=self.execute_automation,
+                args=(user_message, plan, conversation_id),
+                daemon=True
+            ).start()
+
+            return
+
+        if normalized in negative_answers:
+
+            answer = (
+                "Okay! You said no. I cancelled the requested action. "
+                "Your PC has not been changed."
+            )
+
+        elif normalized:
+
+            answer = (
+                f"I heard '{recognized_text}', but it was not a clear yes or no. "
+                "For safety, I cancelled the action. You can ask me again."
+            )
+
+        else:
+
+            answer = (
+                "I did not hear a clear confirmation in time. "
+                "For safety, I cancelled the action. You can ask me again."
+            )
+
+        self.display_ai_response(
+            user_message,
+            answer,
+            conversation_id
+        )
 
     def execute_automation(
         self,
@@ -690,10 +781,6 @@ class JarvisWindow(ctk.CTk):
             )
         )
 
-    # ==========================================
-    # DISPLAY AI RESPONSE
-    # ==========================================
-
     def display_ai_response(
         self,
         user_message,
@@ -714,11 +801,11 @@ class JarvisWindow(ctk.CTk):
         )
 
         if conversation_id == self.current_conversation_id:
-
             self.add_message("JARVIS", answer)
 
-        # Speak the response using Kokoro.
         jarvis_voice.speak(answer)
+
+        self.stop_button.configure(state="normal")
 
         self.is_generating = False
 
@@ -734,11 +821,11 @@ class JarvisWindow(ctk.CTk):
 
         if self.listening:
 
-            self.orb.set_state("listening")
+            self.orb.set_state("thinking")
 
             self.orb_status.configure(
-                text="LISTENING MODE (MIC NOT CONNECTED)",
-                text_color=theme.ACCENT
+                text="JARVIS IS SPEAKING...",
+                text_color="#A855F7"
             )
 
         else:
@@ -751,8 +838,154 @@ class JarvisWindow(ctk.CTk):
             )
 
     # ==========================================
-    # NEW CONVERSATION
+    # STOP SPEAKING
     # ==========================================
+
+    def stop_speaking(self):
+
+        if self.is_closing:
+            return
+
+        try:
+
+            jarvis_voice.stop_speaking()
+
+            self.stop_button.configure(state="disabled")
+
+            if self.awaiting_voice_confirmation:
+
+                self.awaiting_voice_confirmation = False
+                self.pending_automation = None
+
+                self.orb.set_state("idle")
+                self.orb_status.configure(
+                    text="ACTION CANCELLED",
+                    text_color=theme.MUTED
+                )
+
+                return
+
+            if self.listening:
+
+                self.orb_status.configure(
+                    text="RESUMING LISTENING...",
+                    text_color=theme.ACCENT
+                )
+
+                self.after(250, self.resume_listening)
+
+            else:
+
+                self.orb.set_state("idle")
+
+                self.orb_status.configure(
+                    text="SPEAKING STOPPED",
+                    text_color=theme.MUTED
+                )
+
+        except Exception as error:
+
+            print("Stop speaking error:", error)
+
+    # ==========================================
+    # KOKORO SPEECH FINISHED
+    # ==========================================
+
+    def on_voice_finished(self):
+
+        if self.is_closing:
+            return
+
+        try:
+
+            self.after(
+                0,
+                self.handle_voice_finished
+            )
+
+        except Exception:
+            pass
+
+    def handle_voice_finished(self):
+
+        if self.is_closing:
+            return
+
+        if self.awaiting_voice_confirmation:
+
+            self.stop_button.configure(state="disabled")
+
+            self.orb.set_state("listening")
+
+            self.orb_status.configure(
+                text="SAY YES OR NO...",
+                text_color=theme.ACCENT
+            )
+
+            try:
+
+                jarvis_speech.start_confirmation(
+                    self.on_voice_confirmation_result,
+                    timeout=8
+                )
+
+            except Exception as error:
+
+                print("Could not start voice confirmation:", error)
+                self.finish_voice_confirmation(None)
+
+            return
+
+        self.stop_button.configure(state="disabled")
+
+        if self.listening:
+
+            self.resume_listening()
+
+        elif not self.is_generating:
+
+            self.orb.set_state("idle")
+
+            self.orb_status.configure(
+                text="SYSTEM IDLE",
+                text_color=theme.MUTED
+            )
+
+    def resume_listening(self):
+
+        if self.is_closing:
+            return
+
+        if not self.listening:
+            return
+
+        if self.is_generating:
+            return
+
+        if jarvis_speech.is_listening:
+            return
+
+        if jarvis_speech.is_confirming:
+            return
+
+        self.start_microphone()
+
+    def start_microphone(self):
+
+        if not self.listening:
+            return
+
+        if self.is_generating:
+            return
+
+        jarvis_speech.start()
+
+        self.orb.set_state("listening")
+
+        self.orb_status.configure(
+            text="LISTENING... SPEAK NATURALLY",
+            text_color=theme.ACCENT
+        )
 
     def new_conversation(self):
 
@@ -777,30 +1010,15 @@ class JarvisWindow(ctk.CTk):
 
         self.refresh_history()
 
-    # ==========================================
-    # OPEN MEMORY MANAGER
-    # ==========================================
-
     def open_memory_manager(self):
 
         MemoryManagerWindow(self)
 
-    # ==========================================
-    # MICROPHONE STATUS
-    # ==========================================
-
     def toggle_listening(self):
 
-        self.listening = not self.listening
+        if not self.listening:
 
-        if self.listening:
-
-            self.orb.set_state("listening")
-
-            self.orb_status.configure(
-                text="LISTENING MODE (MIC NOT CONNECTED)",
-                text_color=theme.ACCENT
-            )
+            self.listening = True
 
             self.mic_button.configure(
                 text="■ Stop Listening",
@@ -808,7 +1026,28 @@ class JarvisWindow(ctk.CTk):
                 hover_color="#641D2C"
             )
 
+            if self.is_generating:
+
+                self.orb_status.configure(
+                    text="WAITING FOR JARVIS TO FINISH...",
+                    text_color=theme.ACCENT
+                )
+
+                return
+
+            self.start_microphone()
+
         else:
+
+            self.listening = False
+
+            jarvis_speech.stop()
+
+            self.mic_button.configure(
+                text="🎙 Start Listening",
+                fg_color="#164C64",
+                hover_color="#087FAD"
+            )
 
             if not self.is_generating:
 
@@ -819,8 +1058,16 @@ class JarvisWindow(ctk.CTk):
                     text_color=theme.MUTED
                 )
 
-            self.mic_button.configure(
-                text="🎙 Start Listening",
-                fg_color="#164C64",
-                hover_color="#087FAD"
-            )
+    def close_application(self):
+
+        self.is_closing = True
+        self.listening = False
+
+        jarvis_speech.stop()
+
+        try:
+            jarvis_voice.stop_speaking()
+        except Exception:
+            pass
+
+        self.destroy()
