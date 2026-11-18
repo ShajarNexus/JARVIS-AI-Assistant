@@ -1,8 +1,8 @@
 customtkinter
-pillow
 requests
 pyttsx3
 kokoro-onnx
 sounddevice
 soundfile
 onnxruntime
+faster-whisper
